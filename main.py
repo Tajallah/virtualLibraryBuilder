@@ -4,16 +4,26 @@ import os
 from bs4 import BeautifulSoup as bsp
 
 #define the root page
-topAddr = "https://openai.com/progress/"
+topAddr = "https://openai.com/blog/tags/milestones/"
 html = requests.get(topAddr).text
-soupBowl = bsp(html, features="lxml")
+soupBowl = bsp(html)
 
-paperAs= soupBowl.find_all('a')
+blog = soupBowl.find_all('a')
 leadHolder = []
-for link in paperAs:
+for link in blog:
     newlink = link.get("href")
-    if "arxiv" in newlink:
+    if "blog" in newlink:
         leadHolder.append(newlink)
+
+papers=[]
+for link in leadHolder:
+    newAddr = "https://openai.com" + link
+    html = requests.get(newAddr).text
+    newBowl = bsp(html).find_all('a')
+    for link in newBowl:
+        newlink = link.get("href")
+        if newlink is not None and "arxiv" in newlink:
+            papers.append(newlink)
 
 if os.path.exists("saved"):
     if os.path.isdir("saved"):
@@ -38,6 +48,6 @@ def downloadPaper(url):
     else:
         print("%s already exists"%(filename))
 
-for link in leadHolder:
+for link in papers:
     downloadPaper(link)
     print("Ok we're done here.")
