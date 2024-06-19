@@ -2,7 +2,6 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 import wget
 import os
-from pypdf import PdfFileReader as pdfr
 from bs4 import BeautifulSoup as bsp
 
 executor = ThreadPoolExecutor(max_workers=32)
@@ -18,11 +17,6 @@ def makeURL(baseSite:str, urlStub:str) -> str:
 def openPage(url:str) -> str:
     return requests.get(url).text
 
-#get the title of the pdf by opening it using pypdf
-def getTitle(pdfData) -> str:
-    pdf = pdfr(pdfData)
-    return pdf.getDocumentInfo().title
-
 def getPDFLinks(page:str) -> list:
     soup = bsp(page, "html.parser")
     pdfLink = soup.findAll("a", {"title":"Download PDF"})
@@ -32,10 +26,10 @@ def getPDFLinks(page:str) -> list:
     return holder
 
 def sanitizeTarget(target:str) -> str:
-    target.replace("https://", "")
-    target = target.replace("/", "_")
-    target = target.replace(":", "_")
-    target = target.replace(" ", "_")
+    target = target.replace("https://", "")
+    target = target.replace("/", "")
+    target = target.replace(":", "")
+    target = target.replace(" ", "")
     return target
 
 def downloadSingleFile(pdfLink:str, target:str):
