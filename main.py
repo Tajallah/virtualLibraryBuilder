@@ -2,58 +2,75 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 import wget
 import os
+from pypdf import PdfFileReader as pdfr
 from bs4 import BeautifulSoup as bsp
 
-executor = ThreadPoolExecutor(max_workers=8)
+executor = ThreadPoolExecutor(max_workers=32)
 
-def fetchURL(url):
-    print("Fetching %s"%(url))
-    t = requests.get(url).text
-    return t
+mainURL = "https://arxiv.org"
 
-def downloadPaper(url):
-    urlobj = url.split("/")
-    urlobj[3] = "pdf"
-    urlobj[-1] += ".pdf"
-    newUrl = ""
-    for item in urlobj:
-        newUrl += item + "/"
-    newUrl = newUrl[:-1]
-    filename = "saved/" + urlobj[-1]
-    print("Downloading %s"%(newUrl))
-    if not os.path.exists(filename):
-        wget.download(newUrl, filename)
-    else:
-        print("%s already exists"%(filename))
+targetList = open("targets.txt", "r").readlines()
 
-def getPapers(link):
-    ppr = None
-    newAddr = "https://openai.com" + link
-    html = requests.get(newAddr).text
-    newBowl = bsp(html, features="html.parser").find_all('a')
-    for link in newBowl:
-        newlink = link.get("href")
-        if newlink is not None and "arxiv" in newlink:
-            if os.path.exists("saved"):
-                executor.submit(downloadPaper, newlink)
-            else:
-                os.mkdir("saved")
-                executor.submit(downloadPaper, newlink)
-            
+#make a url for the purposes of downloading a pdf
+def makeURL(baseSite:str, urlStub:str) -> str:
+    return baseSite + urlStub
 
-#define the root page
-topAddr = "https://openai.com/blog/tags/milestones/"
-html = fetchURL(topAddr)
-soupBowl = bsp(html, features="html.parser")
+def openPage(url:str) -> str:
+    return requests.get(url).text
 
-blog = soupBowl.find_all('a')
-leadHolder = []
-for link in blog:
-    newlink = link.get("href")
-    if "blog" in newlink:
-        leadHolder.append(newlink)
+#get the title of the pdf by opening it using pypdf
+def getTitle(pdfData) -> str:
+    pdf = pdfr(pdfData)
+    return pdf.getDocumentInfo().title
 
-for link in leadHolder:
-    getPapers(link)
+def getPDFLinks(page:str) -> list:
+    soup = bsp(page, "html.parser")
+    pdfLink = soup.findAll("a", {"title":"Download PDF"})
+    holder = []
+    for link in pdfLink:
+        holder.append(link["href"])
+    return holder
+
+def sanitizeTarget(target:str) -> str:
+    target.replace("https://", "")
+    target = target.replace("/", "_")
+    target = target.replace(":", "_")
+    target = target.replace(" ", "_")
+    return target
+
+def downloadSingleFile(pdfLink:str, target:str):
+    print("Downloading PDF: ", pdfLink)
+    if pdfLink:
+        sanitizedTarget = sanitizeTarget(target)
+        pdfURL = makeURL(mainURL, pdfLink)
+        pdfName = pdfLink.split("/")[-1]
+        sanitizedPDFName = sanitizeTarget(pdfName)
+        print(f"Downloading {pdfName} for {target}")
+        #if the folder structure doesn't exist, create it
+        if not os.path.exists(f"pdfs/{sanitizedTarget}"):
+            os.makedirs(f"pdfs/{sanitizedTarget}")
+        #if the file does not already exist, download it
+        if not os.path.exists(f"pdfs/{sanitizedTarget}/{sanitizedPDFName}.pdf"):
+            print(f"Downloading {pdfName} for {target}")
+            wget.download(pdfURL, out=f"pdfs/{sanitizedTarget}/{sanitizedPDFName}.pdf")
+        else:
+            print(f"Could not find PDF for {target}")
+
+def downloadPDFs(url:str, target:str):
+    pdfLinks = getPDFLinks(openPage(target))
+    for pdfLink in pdfLinks:
+        print("Attempting to download PDF: ", pdfLink)
+        executor.submit(downloadSingleFile, pdfLink, url)
+
+def doAllDownloads():
+    print("Starting downloads...")
+    print("Targets: ", targetList)
+    for target in targetList:
+        target = target.strip()
+        downloadPDFs(mainURL, target)
+
+doAllDownloads()
 
 executor.shutdown(wait=True)
+
+print("All PDFs downloaded!")
